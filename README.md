@@ -12,8 +12,7 @@ pip install -r requirements.txt
 
 ## Data 
 
- We utilize two widely used datasets. 
-```
+We utilize two widely used datasets. 
 Create new folder named "embedding" to store embedding word.
 Go to http://nlp.stanford.edu/data/glove.6B.zip to download embedding word and store to "embedding folder"
 ```
@@ -54,6 +53,7 @@ python MasterFC/master_get.py --dataset="Snopes" \
 You can also simply run the bash script.
 ```
 sh run.sh  (run all experiments)
+```
 ```
 sh run_snopes.sh
 ```
