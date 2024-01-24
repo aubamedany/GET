@@ -13,9 +13,11 @@ pip install -r requirements.txt
 ## Data 
 
 We utilize two widely used datasets. 
-Create new folder named "embedding" to store embedding word.
-Go to http://nlp.stanford.edu/data/glove.6B.zip to download embedding word and store to "embedding folder"
-```
+
+Create a new folder named **embedding** to store embedding word.
+
+Go to http://nlp.stanford.edu/data/glove.6B.zip to download embedding word and store to **embedding** folder
+
 
 * Snopes: http://resources.mpi-inf.mpg.de/impact/dl_cred_analysis/Snopes.zip
 * PolitiFact: http://resources.mpi-inf.mpg.de/impact/dl_cred_analysis/PolitiFact.zip
@@ -54,8 +56,9 @@ You can also simply run the bash script.
 ```
 sh run.sh  (run all experiments)
 ```
+or
 ```
-sh run_snopes.sh
+sh run_snopes.sh (on Snopes dataset)
 ```
 or
 ``` 
