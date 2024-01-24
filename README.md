@@ -13,7 +13,8 @@ pip install -r requirements.txt
 ## Data 
 
  We utilize two widely used datasets. 
-
+Create new folder named "embedding" to store embedding word 
+Go to http://nlp.stanford.edu/data/glove.6B.zip to download embedding word and store to "embedding folder"
 * Snopes: http://resources.mpi-inf.mpg.de/impact/dl_cred_analysis/Snopes.zip
 * PolitiFact: http://resources.mpi-inf.mpg.de/impact/dl_cred_analysis/PolitiFact.zip
 
@@ -41,8 +42,11 @@ python MasterFC/master_get.py --dataset="Snopes" \
                              --lr=0.0001 \
                              --gnn_dropout=0.2 \
                              --seed=123756 \
-                             --gsl_rate=0.6
-```
+                             --gsl_rate=0.6 \
+                             --lamda1=0.4 \
+                             --lamda2=0.01 \
+                             --use_oc=True
+```    
 
 You can also simply run the bash script.
 
