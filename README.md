@@ -52,7 +52,8 @@ python MasterFC/master_get.py --dataset="Snopes" \
 ```    
 
 You can also simply run the bash script.
-
+```
+sh run.sh  (run all experiments)
 ```
 sh run_snopes.sh
 ```
