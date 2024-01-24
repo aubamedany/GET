@@ -9,7 +9,8 @@ We use Pytorch 1.9.1 and python 3.6. Other requirements are in requirements.txt.
 ```
 pip install -r requirements.txt
 ```
-
+## Log
+Create folder **logs/get** to store log.
 ## Data 
 
 We utilize two widely used datasets. 
