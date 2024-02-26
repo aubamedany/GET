@@ -144,7 +144,7 @@ class Sampler(object):
         evd_docs_char_source_contents = np.zeros((query_ids.shape[0], fixed_num_evidences,
                                                   interactions.padded_doc_char_source_length), np.int64)
         evd_docs_adj = np.zeros((query_ids.shape[0], fixed_num_evidences, interactions.padded_doc_length,
-                                 interactions.padded_doc_length), np.float)
+                                 interactions.padded_doc_length), np.float64)
 
         for i, u in enumerate(query_ids):
             evidences_info = interactions.dict_claims_and_evidences_test[u]  # use u not i
