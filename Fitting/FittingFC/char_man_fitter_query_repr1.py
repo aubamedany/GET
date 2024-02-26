@@ -299,8 +299,8 @@ class CharManFitterQueryRepr1(MultiLevelAttentionCompositeFitter):
                 query_ood_idx.append(i)
         
         
-        query_ind_idx = np.array(query_ind_idx).astype(np.int)
-        query_ood_idx = np.array(query_ood_idx).astype(np.int)
+        query_ind_idx = np.array(query_ind_idx).astype(np.int64)
+        query_ood_idx = np.array(query_ood_idx).astype(np.int64)
         
         # left_contents_ind, left_contents_ood = left_contents[query_ind_ids], left_contents[query_ood_ids]
         # ind_query_contents, ood_query_contents = query_contents[]
