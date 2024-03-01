@@ -53,11 +53,4 @@ You can also simply run the bash script.
 ```
 sh run.sh  (run all experiments)
 ```
-or
-```
-sh run_snopes.sh (on Snopes dataset)
-```
-or
-``` 
-sh run_politifact.sh (on the PolitiFact dataset)
-```
+
