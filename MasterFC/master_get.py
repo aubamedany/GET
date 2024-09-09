@@ -59,7 +59,7 @@ def fit_models(args):
         file_handler.myprint("Setting seed to " + str(args.seed))
        
         predict_pack = cls_load_data.load_data(root + "/%sfold" % args.num_folds, 'test_%s' % i, kfolds = args.num_folds)
-        train_pack = cls_load_data.load_data(root + "/%sfold" % args.num_folds, 'train_%s' % i, kfolds = args.num_folds)
+        train_pack = cls_load_data.load_data(root + "/%sfold" % args.num_folds, 'train_%sres' % i, kfolds = args.num_folds)
         valid_pack = cls_load_data.load_data(root, 'dev', kfolds = args.num_folds)
         # print(train_pack.left.head())
 
