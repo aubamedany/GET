@@ -150,7 +150,7 @@ def fit_models(args):
                                                   early_stopping = args.early_stopping, use_cuda = args.cuda,
                                                   logfolder = outfolder_per_fold, curr_date = curr_date,
                                                   fixed_num_evidences = args.fixed_num_evidences,
-                                                  output_handler_fact_checking = file_handler, seed=args.seed,
+                                                  output_handler_fact_checking = file_handler, seed=args.seed,lamda = args.lamda1,
                                                   output_size=match_params["output_size"])
 
         try:
@@ -223,7 +223,7 @@ if __name__ == '__main__':
     parser.add_argument('--claim_src_emb_size', type = int, default = 128, help = 'Embedding size of article')
     parser.add_argument('--fixed_length_left_src_chars', type = int, default = 20, help = 'Max number of chars for left sources')
     parser.add_argument('--fixed_length_right_src_chars', type = int, default = 20, help = 'Max number of chars for right sources')
-
+    parser.add_argument('--lamda1', type=float, default=0.0, help='weight for regularization')
    
     args = parser.parse_args()
 

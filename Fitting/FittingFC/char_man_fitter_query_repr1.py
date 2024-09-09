@@ -12,7 +12,7 @@ from Fitting.FittingFC.multi_level_attention_composite_fitter import MultiLevelA
 from typing import List
 from sklearn.metrics import f1_score, precision_score, recall_score
 import sklearn
-
+import torch.nn.functional as F
 
 class CharManFitterQueryRepr1(MultiLevelAttentionCompositeFitter):
     """
@@ -40,6 +40,7 @@ class CharManFitterQueryRepr1(MultiLevelAttentionCompositeFitter):
                                             early_stopping, decay_step, decay_weight, optimizer_func,
                                             use_cuda, num_negative_samples, logfolder, curr_date, seed, **kargs)
         self.output_size = kargs["output_size"]
+        self.lamda1 = kargs["lamda"]
 
     def fit(self,
             train_iteractions: interactions.ClassificationInteractions,
@@ -248,14 +249,214 @@ class CharManFitterQueryRepr1(MultiLevelAttentionCompositeFitter):
             KeyWordSettings.Query_Adj: query_adj,
             KeyWordSettings.Evd_Docs_Adj: e_adj                       # flatten->(n1 + n2 ..., R, R)
         }
+        #---------------IND + OOD----------------#
+        # SPLIT DATA
+        query_ind_idx =[]
+        query_ood_idx = []
+        for i in range(labels.shape[0]):
+            if labels[i] == 1:
+                query_ind_idx.append(i)
+            else:
+                query_ood_idx.append(i)
+        
+        
+        query_ind_idx = np.array(query_ind_idx).astype(np.int64)
+        query_ood_idx = np.array(query_ood_idx).astype(np.int64)
+        
+        # left_contents_ind, left_contents_ood = left_contents[query_ind_ids], left_contents[query_ood_ids]
+        # ind_query_contents, ood_query_contents = query_contents[]
+        
+        ind_evd_count_per_query = evd_count_per_query[query_ind_idx]  # (B, )
+        ind_query_char_source = query_char_source[query_ind_idx]
+        ind_doc_char_source = doc_char_source[query_ind_idx]
+        ind_query_adj = query_adj[query_ind_idx]
+        ind_evd_docs_adj = evd_docs_adj[query_ind_idx]
+        # IND DATA SETTING
+        # ind_evd_count_per_query = kargs[KeyWordSettings.EvidenceCountPerQuery[query_ind_idx]]  # (B, )
+        # ind_query_char_source = kargs[KeyWordSettings.FCClass.QueryCharSource[query_ind_idx]]
+        # ind_doc_char_source = kargs[KeyWordSettings.FCClass.DocCharSource[query_ind_idx]]
+        # ind_query_adj = kargs[KeyWordSettings.Query_Adj[query_ind_idx]]
+        # ind_evd_docs_adj = kargs[KeyWordSettings.Evd_Docs_Adj[query_ind_idx]]
 
-        # (B,)
-        predictions = self._net(query_contents, evd_doc_contents, **additional_paramters)
-        # labels.unsqueeze(-1).expand(batch_size, n).reshape(batch_size * n)
-        # labels = torch_utils.gpu(torch.from_numpy(np.array(expaned_labels)), self._use_cuda)
-        # print("Labels: ", labels)
-        # mask = (evd_doc_ids >= 0).view(batch_size * n).float()
-        return self._loss_func(predictions, labels.float())
+        # assert evd_doc_ids.size() == evd_docs_lens.shape
+        # assert query_ids.size(0) == evd_doc_ids.size(0)
+        # assert query_lens.shape == labels.size()
+        # assert query_contents.size(0) == evd_doc_contents.size(0)  # = batch_size
+        _, L = query_contents.size()
+        ind_batch_size = query_ids[query_ind_idx].size(0)
+        # prunning at this step to remove padding\
+        ind_e_lens, ind_e_conts, ind_q_conts, ind_q_lens, ind_e_adj = [], [], [], [], []
+        ind_e_chr_src_conts = []
+        ind_expaned_labels = []
+        for ind_evd_cnt, ind_q_cont, ind_q_len, ind_evd_lens, ind_evd_doc_cont, ind_evd_chr_src, ind_label, ind_evd_adj in \
+                zip(ind_evd_count_per_query, query_contents[query_ind_idx], query_lens[query_ind_idx],
+                    evd_docs_lens[query_ind_idx], evd_doc_contents[query_ind_idx], ind_doc_char_source, labels[query_ind_idx], ind_evd_docs_adj):
+            ind_evd_cnt = int(torch_utils.cpu(ind_evd_cnt).detach().numpy())
+            ind_e_lens.extend(list(ind_evd_lens[:ind_evd_cnt]))
+            ind_e_conts.append(ind_evd_doc_cont[:ind_evd_cnt, :])  # stacking later
+            ind_e_adj.append(ind_evd_adj[:ind_evd_cnt])
+            ind_e_chr_src_conts.append(ind_evd_chr_src[:ind_evd_cnt, :])
+            ind_q_lens.extend([ind_q_len] * ind_evd_cnt)
+            ind_q_conts.append(ind_q_cont.unsqueeze(0).expand(ind_evd_cnt, L))
+            ind_expaned_labels.extend([int(torch_utils.cpu(ind_label).detach().numpy())] * ind_evd_cnt)
+        # concat
+        if(len(ind_e_conts)>0):
+          ind_e_conts = torch.cat(ind_e_conts, dim=0)  # (n1 + n2 + ..., R)
+        else:
+          ind_e_conts= torch.tensor(ind_e_conts)
+        if(len(ind_e_chr_src_conts)>0):
+          ind_e_chr_src_conts = torch.cat(ind_e_chr_src_conts, dim=0)  # (n1 + n2 + ... , R)
+        else:
+          ind_e_chr_src_conts= torch.tensor(ind_e_chr_src_conts)
+
+        if(len(ind_e_adj)>0):
+          ind_e_adj = torch.cat(ind_e_adj, dim=0)     # (n1 + n2 + ..., R, R)
+        else:
+          ind_e_adj= torch.tensor(ind_e_adj)
+        ind_e_lens = np.array(ind_e_lens)  # (n1 + n2 + ..., )
+        
+        if(len(ind_q_conts)>0):
+          ind_q_conts = torch.cat(ind_q_conts, dim=0)  # (n1 + n2 + ..., R)
+        else:
+          ind_q_conts= torch.tensor(ind_q_conts)
+        ind_q_lens = np.array(ind_q_lens)
+        # assert ind_q_conts.size(0) == ind_q_lens.shape[0] == ind_e_conts.size(0) == ind_e_lens.shape[0]
+
+        ind_d_new_indices, ind_d_old_indices = torch_utils.get_sorted_index_and_reverse_index(ind_e_lens)
+        ind_e_lens = my_utils.gpu(torch.from_numpy(ind_e_lens), self._use_cuda)
+        ind_x = query_lens[query_ind_idx]
+        ind_q_new_indices, ind_q_restoring_indices = torch_utils.get_sorted_index_and_reverse_index(ind_x)
+        ind_x = my_utils.gpu(torch.from_numpy(ind_x), self._use_cuda)
+        # query_lens = my_utils.gpu(torch.from_numpy(query_lens), self._use_cuda)
+
+        ind_additional_paramters = {
+            KeyWordSettings.Query_lens: ind_x,  # 每一个query长度
+            KeyWordSettings.Doc_lens: evd_docs_lens[query_ind_idx],
+            KeyWordSettings.DocLensIndices: (ind_d_new_indices, ind_d_old_indices, ind_e_lens),
+            KeyWordSettings.QueryLensIndices: (ind_q_new_indices, ind_q_restoring_indices, ind_x),
+            KeyWordSettings.QuerySources: query_sources[query_ind_idx],
+            KeyWordSettings.DocSources: evd_sources[query_ind_idx],
+            KeyWordSettings.TempLabel: labels[query_ind_idx],
+            KeyWordSettings.DocContentNoPaddingEvidence: ind_e_conts,
+            KeyWordSettings.QueryContentNoPaddingEvidence: ind_q_conts,
+            KeyWordSettings.EvidenceCountPerQuery: ind_evd_count_per_query,
+            KeyWordSettings.FCClass.QueryCharSource: ind_query_char_source,  # (B, 1, L)
+            KeyWordSettings.FCClass.DocCharSource: ind_e_chr_src_conts,
+            KeyWordSettings.FIXED_NUM_EVIDENCES: n,
+            KeyWordSettings.Query_Adj: ind_query_adj,
+            KeyWordSettings.Evd_Docs_Adj: ind_e_adj                       # flatten->(n1 + n2 ..., R, R)
+        }
+# ---------------------------------------------------------------------------------------------------------------------------- #
+        # OOD DATA SETTING
+        ood_evd_count_per_query = evd_count_per_query[query_ood_idx]  # (B, )
+        ood_query_char_source = query_char_source[query_ood_idx]
+        ood_doc_char_source = doc_char_source[query_ood_idx]
+        ood_query_adj = query_adj[query_ood_idx]
+        ood_evd_docs_adj = evd_docs_adj[query_ood_idx]
+        ood_batch_size = query_ids[query_ood_idx].size(0)
+        # prunning at this step to remove padding\
+        ood_e_lens, ood_e_conts, ood_q_conts, ood_q_lens, ood_e_adj = [], [], [], [], []
+        ood_e_chr_src_conts = []
+        ood_expaned_labels = []
+        for ood_evd_cnt, ood_q_cont, ood_q_len, ood_evd_lens, ood_evd_doc_cont, ood_evd_chr_src, ood_label, ood_evd_adj in \
+                zip(ood_evd_count_per_query, query_contents[query_ood_idx], query_lens[query_ood_idx],
+                    evd_docs_lens[query_ood_idx], evd_doc_contents[query_ood_idx], ood_doc_char_source, labels[query_ood_idx], ood_evd_docs_adj):
+            ood_evd_cnt = int(torch_utils.cpu(ood_evd_cnt).detach().numpy())
+            ood_e_lens.extend(list(ood_evd_lens[:ood_evd_cnt]))
+            ood_e_conts.append(ood_evd_doc_cont[:ood_evd_cnt, :])  # stacking later
+            ood_e_adj.append(ood_evd_adj[:ood_evd_cnt])
+            ood_e_chr_src_conts.append(ood_evd_chr_src[:ood_evd_cnt, :])
+            ood_q_lens.extend([ood_q_len] * ood_evd_cnt)
+            ood_q_conts.append(ood_q_cont.unsqueeze(0).expand(ood_evd_cnt, L))
+            ood_expaned_labels.extend([int(torch_utils.cpu(ood_label).detach().numpy())] * ood_evd_cnt)
+        # concat
+        if(len(ood_e_conts)>0):
+          ood_e_conts = torch.cat(ood_e_conts, dim=0)  # (n1 + n2 + ..., R)
+        else:
+          ood_e_conts = torch.tensor(ood_e_conts)
+        if(len(ood_e_chr_src_conts)>0):
+          ood_e_chr_src_conts = torch.cat(ood_e_chr_src_conts, dim=0)  # (n1 + n2 + ... , R)
+        else:
+          ood_e_chr_src_conts = torch.tensor(ood_e_chr_src_conts)
+        if(len(ood_e_adj)>0):
+          ood_e_adj = torch.cat(ood_e_adj, dim=0)     # (n1 + n2 + ..., R, R)
+        else:
+          ood_e_adj = torch.tensor(ood_e_adj)
+        ood_e_lens = np.array(ood_e_lens)  # (n1 + n2 + ..., )
+        if(len(ood_q_conts)>0):
+          ood_q_conts = torch.cat(ood_q_conts, dim=0)  # (n1 + n2 + ..., R)
+        else:
+          ood_q_conts = torch.tensor(ood_q_conts)
+        ood_q_lens = np.array(ood_q_lens)
+        assert ood_q_conts.size(0) == ood_q_lens.shape[0] == ood_e_conts.size(0) == ood_e_lens.shape[0]
+
+        ood_d_new_indices, ood_d_old_indices = torch_utils.get_sorted_index_and_reverse_index(ood_e_lens)
+        ood_e_lens = my_utils.gpu(torch.from_numpy(ood_e_lens), self._use_cuda)
+        ood_x = query_lens[query_ood_idx]
+        ood_q_new_indices, ood_q_restoring_indices = torch_utils.get_sorted_index_and_reverse_index(ood_x)
+        ood_x = my_utils.gpu(torch.from_numpy(ood_x), self._use_cuda)
+        # query_lens = my_utils.gpu(torch.from_numpy(query_lens), self._use_cuda)
+
+        ood_additional_paramters = {
+            KeyWordSettings.Query_lens: ood_x,  # 每一个query长度
+            KeyWordSettings.Doc_lens: evd_docs_lens[query_ood_idx],
+            KeyWordSettings.DocLensIndices: (ood_d_new_indices, ood_d_old_indices, ood_e_lens),
+            KeyWordSettings.QueryLensIndices: (ood_q_new_indices, ood_q_restoring_indices, ood_x),
+            KeyWordSettings.QuerySources: query_sources[query_ood_idx],
+            KeyWordSettings.DocSources: evd_sources[query_ood_idx],
+            KeyWordSettings.TempLabel: labels[query_ood_idx],
+            KeyWordSettings.DocContentNoPaddingEvidence: ood_e_conts,
+            KeyWordSettings.QueryContentNoPaddingEvidence: ood_q_conts,
+            KeyWordSettings.EvidenceCountPerQuery: ood_evd_count_per_query,
+            KeyWordSettings.FCClass.QueryCharSource: ood_query_char_source,  # (B, 1, L)
+            KeyWordSettings.FCClass.DocCharSource: ood_e_chr_src_conts,
+            KeyWordSettings.FIXED_NUM_EVIDENCES: n,
+            KeyWordSettings.Query_Adj: ood_query_adj,
+            KeyWordSettings.Evd_Docs_Adj: ood_e_adj                       # flatten->(n1 + n2 ..., R, R)
+        }
+        # logits = self._net(query_contents, evd_doc_contents, **additional_paramters)
+        # return self._loss_func(logits, labels.float())
+#------------------------------------reg_loss-------------------------------------------#        
+        # my_utils.gpu(torch.from_numpy(ood_e_lens), self._use_cuda)
+        logits_in = self._net(query_contents[query_ind_idx], evd_doc_contents[query_ind_idx], **ind_additional_paramters)
+        logits_out = self._net(query_contents[query_ood_idx], evd_doc_contents[query_ood_idx], **ood_additional_paramters)
+        logits = self._net(query_contents, evd_doc_contents, **additional_paramters)
+
+        sup_loss=self._loss_func(logits, labels.float())
+        T=1
+        energy_in = - T * torch.logsumexp(logits_in / T, dim=-1)
+        energy_out = - T * torch.logsumexp(logits_out / T, dim=-1)
+
+        if energy_in.shape[0] != energy_out.shape[0]:
+            min_n = min(energy_in.shape[0], energy_out.shape[0])
+            energy_in = energy_in[:min_n]
+            energy_out = energy_out[:min_n]
+        
+        m_in = -10
+        m_out=-1
+        
+        reg_loss = torch.mean(F.relu(energy_in - m_in) ** 2 + F.relu(m_out - energy_out) ** 2)
+
+#----------------------------------oc_loss---------------------------------------------- #       
+        # eps = 0.01 
+        # nu = 0.1
+        # center = logits_in.mean(dim=0)
+        # # If c_i is too close to 0, set to +-eps. Reason: a zero unit can be trivially matched with zero weights.
+        # center[(abs(center) < eps) & (center < 0)] = -eps
+        # center[(abs(center) < eps) & (center > 0)] = eps
+        # self.radius = self.radius.cpu()
+        # dist,scores = anomaly_score(center,logits_in,self.radius)  
+        # self.radius=self.radius.to('cuda:0')
+        # oc_loss = loss_function(nu, scores,self.radius)
+        # self.radius = get_radius(dist, nu)
+#---------------------------------total_loss---------------------------------------------#
+        # if self.args.use_oc:
+        #     loss  = (1-self.args.lamda1)*sup_loss +self.args.lamda1*reg_loss + self.args.lamda2 *oc_loss
+        # else:
+        # args.lamda1 = 0.05
+        loss  = (1-self.lamda1)*sup_loss +self.lamda1*reg_loss
+        return loss
+
 
     def evaluate(self, testRatings: interactions.ClassificationInteractions, K: int, output_ranking=False, **kargs):
         """
