@@ -27,7 +27,7 @@ def fit_models(args):
 
     curr_date = datetime.datetime.now().timestamp()  # seconds
     # folder to store all outputed files of a run
-    secondary_log_folder = os.path.join(args.log, "log_results_%s" % (args.dataset))
+    secondary_log_folder = os.path.join(args.log, f"log_results_{args.dataset}_{args.lamda1}")
     if not os.path.exists(secondary_log_folder):
         os.mkdir(secondary_log_folder)
     args.secondary_log_folder = secondary_log_folder
