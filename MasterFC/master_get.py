@@ -59,7 +59,7 @@ def fit_models(args):
         file_handler.myprint("Setting seed to " + str(args.seed))
        
         predict_pack = cls_load_data.load_data(root + "/%sfold" % args.num_folds, 'test_%s' % i, kfolds = args.num_folds)
-        train_pack = cls_load_data.load_data(root + "/%sfold" % args.num_folds, 'train_%sres' % i, kfolds = args.num_folds)
+        train_pack = cls_load_data.load_data(root + "/%sfold" % args.num_folds, 'train_%s' % i, kfolds = args.num_folds)
         valid_pack = cls_load_data.load_data(root, 'dev', kfolds = args.num_folds)
         # print(train_pack.left.head())
 
@@ -187,7 +187,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default = 100, help = 'Number of epochs to run', type = int)
     parser.add_argument('--batch_size', default = 32, help = 'Batch size', type = int)
     parser.add_argument('--lr', default = 0.001, type = float, help = 'Learning rate')
-    parser.add_argument('--early_stopping', default = 10, type = int, help = 'The number of step to stop training')
+    parser.add_argument('--early_stopping', default = 8, type = int, help = 'The number of step to stop training')
     parser.add_argument('--debug', default = 1, type = int, help = 'debug or not')
     parser.add_argument('--log', default = "", type = str, help = 'folder for logs and saved models')
     parser.add_argument('--optimizer', nargs = '?', default = 'adam', help = 'Specify an optimizer: adam')
